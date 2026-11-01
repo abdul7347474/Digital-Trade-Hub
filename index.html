@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Digital Trade Hub Admin</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f7fb;color:#152238;font:15px system-ui,Arial}
+header{background:#102a56;color:#fff;padding:22px 5%;display:flex;justify-content:space-between;align-items:center}
+main{max-width:1100px;margin:28px auto;padding:0 18px}.panel{background:white;border-radius:16px;padding:20px;margin-bottom:18px;box-shadow:0 4px 20px #102a5610}
+input,button{padding:11px;border:1px solid #d5dce8;border-radius:9px;font:inherit}input{width:100%;margin:6px 0 12px}button{background:#2563eb;color:white;border:0;cursor:pointer;margin:3px}button.secondary{background:#e8eef9;color:#102a56}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.item{border:1px solid #e1e7f0;border-radius:12px;padding:14px;margin:10px 0}.muted{color:#64748b;font-size:13px}.hidden{display:none}.row{display:flex;gap:8px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<header><strong>Digital Trade Hub · Admin</strong><span id="who">Not signed in</span></header>
+<main>
+<section class="panel" id="login">
+<h2>Admin sign in</h2>
+<p class="muted">Use the admin account created in Supabase. The database checks admin role using RLS.</p>
+<label>Supabase project URL</label><input id="url" placeholder="https://your-project.supabase.co">
+<label>Supabase anon/publishable key</label><input id="key" placeholder="Supabase anon/publishable key">
+<label>Email</label><input id="email" type="email">
+<label>Password</label><input id="password" type="password">
+<button id="signin">Sign in</button><p id="loginMsg" class="muted"></p>
+</section>
+<section id="dashboard" class="hidden">
+<div class="panel"><div class="row"><button data-tab="listings">Listings</button><button data-tab="requests">Referral requests</button><button data-tab="matches">Matches</button><button data-tab="payments">Payment submissions</button><button class="secondary" id="refresh">Refresh</button><button class="secondary" id="signout">Sign out</button></div></div>
+<div class="panel"><h2 id="heading">Listings</h2><div id="content">Loading…</div></div>
+</section>
+</main>
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+let supabase, current='listings';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+$('signin').onclick=async()=>{
+  $('loginMsg').textContent='Signing in…';
+  try{
+    supabase=createClient($('url').value.trim(),$('key').value.trim());
+    const {data,error}=await supabase.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
+    if(error) throw error;
+    const {data:profile,error:pErr}=await supabase.from('profiles').select('role,full_name').eq('id',data.user.id).single();
+    if(pErr) throw pErr;
+    if(profile.role!=='admin'){await supabase.auth.signOut();throw new Error('This user is not an admin. Set role=admin in Supabase SQL.');}
+    $('login').classList.add('hidden');$('dashboard').classList.remove('hidden');$('who').textContent=profile.full_name||data.user.email;
+    await load();
+  }catch(e){$('loginMsg').textContent=e.message||'Sign-in failed';}
+};
+$('signout').onclick=async()=>{await supabase.auth.signOut();location.reload()};
+$('refresh').onclick=load;
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{current=b.dataset.tab;load()});
+async function load(){
+  const config={
+    listings:{title:'Listings',table:'listings',cols:['title','platform','listing_type','status','seller_id'],actions:true},
+    requests:{title:'Referral requests',table:'referral_requests',cols:['platform','request_type','notes','status','requester_id'],actions:true},
+    matches:{title:'Matches',table:'matches',cols:['request_id','listing_id','requester_id','provider_id','status'],actions:false},
+    payments:{title:'Payment submissions',table:'payment_submissions',cols:['order_id','method','amount','transaction_reference','status','payer_id'],actions:true}
+  }[current];
+  $('heading').textContent=config.title;$('content').textContent='Loading…';
+  const {data,error}=await supabase.from(config.table).select('*').order('created_at',{ascending:false}).limit(100);
+  if(error){$('content').textContent=error.message;return;}
+  $('content').innerHTML=data.length?data.map(row=>`<div class="item"><div class="grid">${config.cols.map(c=>`<div><div class="muted">${esc(c)}</div><div>${esc(row[c])}</div></div>`).join('')}</div>${config.actions?`<div class="row" style="margin-top:12px">${(current==='listings'?['approved','rejected','suspended']:current==='requests'?['approved','rejected','closed']:['under_review','verified','rejected','refunded']).map(s=>`<button data-id="${esc(row.id)}" data-status="${s}">${s}</button>`).join('')}</div>`:''}</div>`).join(''):'No records found.';
+  $('content').querySelectorAll('button[data-id]').forEach(b=>b.onclick=async()=>{
+    const table=config.table, id=b.dataset.id, status=b.dataset.status;
+    const {error}=await supabase.from(table).update({status}).eq('id',id);
+    if(error) alert(error.message); else await load();
+  });
+}
+</script>
+</body></html>
