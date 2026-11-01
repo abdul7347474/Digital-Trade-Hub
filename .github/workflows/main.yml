@@ -28,6 +28,10 @@ jobs:
       - name: Generate Android files
         run: flutter create --platforms=android --project-name digital_trade_hub .
 
+      - name: Add Internet Permission
+        run: |
+          sed -i '/<application/i\    <uses-permission android:name="android.permission.INTERNET"/>' android/app/src/main/AndroidManifest.xml
+
       - name: Install dependencies
         run: flutter pub get
 
@@ -39,6 +43,7 @@ jobs:
           flutter build apk --release \
             --dart-define=SUPABASE_URL=$SUPABASE_URL \
             --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
