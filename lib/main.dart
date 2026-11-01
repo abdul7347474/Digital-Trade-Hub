@@ -347,7 +347,15 @@ class AccountTab extends StatelessWidget {
   const AccountTab({super.key});
   @override
   Widget build(BuildContext context) => FutureBuilder<Map<String, dynamic>>(
-    future: db.from('profiles').select().eq('id', db.auth.currentUser!.id).maybeSingle(),
+    future: () async {
+  final result = await db
+      .from('profiles')
+      .select()
+      .eq('id', db.auth.currentUser!.id)
+      .maybeSingle();
+
+  return result ?? <String, dynamic>{};
+}(),
     builder: (context, snap) {
       final profile = snap.data ?? {};
       return ListView(padding: const EdgeInsets.all(20), children: [
